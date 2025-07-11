@@ -2,12 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>📍 Route + Live Tracker</title>
+  <title>📡 Tracker with Arrow Direction</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.css" />
-
   <style>
     body {
       font-family: sans-serif;
@@ -16,16 +15,16 @@
       background: #f9f9f9;
     }
     button {
-      padding: 12px 24px;
+      padding: 12px 28px;
       font-size: 16px;
       border-radius: 8px;
-      background: #28a745;
+      background: #007bff;
       color: #fff;
       border: none;
       cursor: pointer;
     }
     button:hover {
-      background: #218838;
+      background: #0056b3;
     }
     #map {
       height: 400px;
@@ -33,28 +32,31 @@
       max-width: 600px;
       margin: 30px auto;
       border-radius: 10px;
-      box-shadow: 0 0 8px rgba(0,0,0,0.1);
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
     }
     #status {
       margin-top: 20px;
       font-size: 16px;
+      color: #333;
     }
   </style>
 </head>
 <body>
-  <h2>📡 Real-Time Tracker</h2>
+  <h2>📍 Tracker with Live Arrow Direction</h2>
   <button onclick="toggleTracking()">Start Tracking</button>
   <div id="status">Waiting...</div>
   <div id="map"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.min.js"></script>
-
   <script>
-    let map, marker, routeControl, watchId = null;
+    let map, arrowMarker, routeControl, watchId = null;
     let tracking = false;
+    let lastRouteTime = 0;
+    let prevLat = null, prevLon = null;
+
     const destLat = 43.8500;
-    const destLng = -79.6200;
+    const destLon = -79.6200;
 
     function toggleTracking() {
       if (tracking) {
@@ -62,80 +64,105 @@
         tracking = false;
         document.querySelector("button").textContent = "Start Tracking";
         updateStatus("⛔ Tracking stopped.");
-        return;
+      } else {
+        if (!navigator.geolocation) {
+          updateStatus("❌ Geolocation not supported.");
+          return;
+        }
+
+        watchId = navigator.geolocation.watchPosition(success, error, {
+          enableHighAccuracy: true,
+          maximumAge: 0,
+          timeout: 5000
+        });
+
+        tracking = true;
+        document.querySelector("button").textContent = "Stop Tracking";
+        updateStatus("📡 Tracking started...");
       }
-
-      if (!navigator.geolocation) {
-        updateStatus("❌ Geolocation not supported.");
-        return;
-      }
-
-      watchId = navigator.geolocation.watchPosition(success, error, {
-        enableHighAccuracy: true,
-        maximumAge: 0,
-        timeout: 5000
-      });
-
-      tracking = true;
-      document.querySelector("button").textContent = "Stop Tracking";
-      updateStatus("📡 Tracking started...");
     }
 
-    function success(pos) {
-      const lat = pos.coords.latitude;
-      const lng = pos.coords.longitude;
-      updateStatus(`📍 You: ${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+    function success(position) {
+      const lat = position.coords.latitude;
+      const lon = position.coords.longitude;
 
-      updateMap(lat, lng);
-      drawRoute(lat, lng);
+      updateStatus(`📍 You: ${lat.toFixed(5)}, ${lon.toFixed(5)}`);
+      updateMap(lat, lon);
+      updateRoute(lat, lon);
     }
 
-    function error(err) {
-      updateStatus("❌ Could not fetch location.");
-      console.error(err);
+    function error() {
+      updateStatus("❌ Unable to access location.");
     }
 
     function updateStatus(msg) {
       document.getElementById("status").textContent = msg;
     }
 
-    function updateMap(lat, lng) {
+    function updateMap(lat, lon) {
       if (!map) {
-        map = L.map("map").setView([lat, lng], 14);
+        map = L.map("map").setView([lat, lon], 14);
         L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
           attribution: "&copy; OpenStreetMap contributors"
         }).addTo(map);
 
-        marker = L.circleMarker([lat, lng], {
-          radius: 9,
-          color: "#007bff",
-          fillColor: "#007bff",
-          fillOpacity: 0.7
-        }).addTo(map);
+        const icon = L.divIcon({
+          className: "arrow-icon",
+          html: "🡺", // arrow emoji or SVG
+          iconSize: [30, 30],
+          iconAnchor: [15, 15]
+        });
+
+        arrowMarker = L.marker([lat, lon], { icon, rotationAngle: 0 }).addTo(map);
       } else {
-        marker.setLatLng([lat, lng]);
-        map.panTo([lat, lng]);
+        arrowMarker.setLatLng([lat, lon]);
+        map.panTo([lat, lon]);
+
+        // 🔄 Rotate the arrow based on movement direction
+        if (prevLat && prevLon && (lat !== prevLat || lon !== prevLon)) {
+          const angle = getBearing(prevLat, prevLon, lat, lon);
+          arrowMarker._icon.style.transform = `rotate(${angle}deg)`;
+        }
       }
+
+      prevLat = lat;
+      prevLon = lon;
     }
 
-    function drawRoute(lat, lng) {
-      const origin = L.latLng(lat, lng);
-      const destination = L.latLng(destLat, destLng);
+    function updateRoute(lat, lon) {
+      const now = Date.now();
+      if (now - lastRouteTime < 10000) return;
+      lastRouteTime = now;
+
+      const origin = L.latLng(lat, lon);
+      const destination = L.latLng(destLat, destLon);
 
       if (!routeControl) {
         routeControl = L.Routing.control({
           waypoints: [origin, destination],
-          addWaypoints: false,
           routeWhileDragging: false,
           show: false,
+          addWaypoints: false,
           createMarker: () => null,
           lineOptions: {
-            styles: [{ color: 'red', weight: 5, opacity: 0.8 }]
+            styles: [{ color: 'red', opacity: 0.8, weight: 4 }]
           }
         }).addTo(map);
       } else {
         routeControl.setWaypoints([origin, destination]);
       }
+    }
+
+    // 🧭 Calculate bearing between two points
+    function getBearing(lat1, lon1, lat2, lon2) {
+      const φ1 = lat1 * Math.PI / 180;
+      const φ2 = lat2 * Math.PI / 180;
+      const λ1 = lon1 * Math.PI / 180;
+      const λ2 = lon2 * Math.PI / 180;
+      const y = Math.sin(λ2 - λ1) * Math.cos(φ2);
+      const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(λ2 - λ1);
+      let θ = Math.atan2(y, x) * 180 / Math.PI;
+      return (θ + 360) % 360; // Normalize 0–360
     }
   </script>
 </body>
