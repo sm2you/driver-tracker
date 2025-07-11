@@ -2,49 +2,43 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>📍 Route + Live Tracker</title>
+  <title>🚗 Driver Live Tracker</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.css" />
-
   <style>
     body {
       font-family: sans-serif;
+      background: #eef4ff;
       text-align: center;
-      padding: 40px;
-      background: #f9f9f9;
+      padding: 30px;
     }
     button {
-      padding: 12px 24px;
+      padding: 12px 28px;
       font-size: 16px;
       border-radius: 8px;
-      background: #28a745;
-      color: #fff;
+      background: #007bff;
+      color: white;
       border: none;
       cursor: pointer;
     }
-    button:hover {
-      background: #218838;
-    }
+    button:hover { background: #0056b3; }
+    #status { margin-top: 20px; font-size: 16px; }
     #map {
-      height: 400px;
-      width: 100%;
-      max-width: 900px;
-      margin: 30px auto;
-      border-radius: 10px;
-      box-shadow: 0 0 8px rgba(0,0,0,0.1);
-    }
-    #status {
       margin-top: 30px;
-      font-size: 20px;
+      height: 400px;
+      max-width: 800px;
+      margin-left: auto;
+      margin-right: auto;
+      border-radius: 10px;
+      box-shadow: 0 0 6px rgba(0,0,0,0.1);
     }
   </style>
 </head>
 <body>
-  <h2>📡 Real-Time Tracker</h2>
+  <h2>🚗 Driver Live Tracker</h2>
   <button onclick="toggleTracking()">Start Tracking</button>
-  <div id="status">Click the button to see real-time tracking</div>
+  <div id="status">📍 Waiting for location...</div>
   <div id="map"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -53,8 +47,7 @@
   <script>
     let map, marker, routeControl, watchId = null;
     let tracking = false;
-    const destLat = 43.8500;
-    const destLng = -79.6200;
+    let lat, lng;
 
     function toggleTracking() {
       if (tracking) {
@@ -62,41 +55,42 @@
         tracking = false;
         document.querySelector("button").textContent = "Start Tracking";
         updateStatus("⛔ Tracking stopped.");
-        return;
+      } else {
+        if (!navigator.geolocation) {
+          updateStatus("❌ Geolocation not supported.");
+          return;
+        }
+
+        watchId = navigator.geolocation.watchPosition(success, error, {
+          enableHighAccuracy: true,
+          maximumAge: 0,
+          timeout: 5000
+        });
+
+        tracking = true;
+        updateStatus("📡 Tracking started...");
+        document.querySelector("button").textContent = "Stop Tracking";
       }
-
-      if (!navigator.geolocation) {
-        updateStatus("❌ Geolocation not supported.");
-        return;
-      }
-
-      watchId = navigator.geolocation.watchPosition(success, error, {
-        enableHighAccuracy: true,
-        maximumAge: 0,
-        timeout: 5000
-      });
-
-      tracking = true;
-      document.querySelector("button").textContent = "Stop Tracking";
-      updateStatus("📡 Tracking started...");
-    }
-
-    function success(pos) {
-      const lat = pos.coords.latitude;
-      const lng = pos.coords.longitude;
-      updateStatus(`📍 You: ${lat.toFixed(5)}, ${lng.toFixed(5)}`);
-
-      updateMap(lat, lng);
-      drawRoute(lat, lng);
-    }
-
-    function error(err) {
-      updateStatus("❌ Could not fetch location.");
-      console.error(err);
     }
 
     function updateStatus(msg) {
       document.getElementById("status").textContent = msg;
+    }
+
+    function success(position) {
+      lat = position.coords.latitude;
+      lng = position.coords.longitude;
+
+      updateStatus(`🚗 You: ${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+
+      updateMap(lat, lng);
+      sendLocation(lat, lng);
+      drawRouteToCustomer(lat, lng);
+    }
+
+    function error(err) {
+      updateStatus("❌ Failed to get location.");
+      console.error(err);
     }
 
     function updateMap(lat, lng) {
@@ -118,25 +112,45 @@
       }
     }
 
-    function drawRoute(lat, lng) {
-      const origin = L.latLng(lat, lng);
-      const destination = L.latLng(destLat, destLng);
+    function sendLocation(lat, lng) {
+      fetch("https://driver-tracker-backend.onrender.com/driver-location", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lat, lng })
+      });
+    }
 
-      if (!routeControl) {
-        routeControl = L.Routing.control({
-          waypoints: [origin, destination],
-          addWaypoints: false,
-          routeWhileDragging: false,
-          show: false,
-          createMarker: () => null,
-          lineOptions: {
-            styles: [{ color: 'green', weight: 5, opacity: 0.8 }]
-          }
-        }).addTo(map);
-      } else {
-        routeControl.setWaypoints([origin, destination]);
+    async function drawRouteToCustomer(lat, lng) {
+      try {
+        const res = await fetch("https://driver-tracker-backend.onrender.com/customer-location");
+        const data = await res.json();
+        const custLat = data.lat;
+        const custLng = data.lng;
+
+        if (!custLat || !custLng) return;
+
+        const origin = L.latLng(lat, lng);
+        const destination = L.latLng(custLat, custLng);
+
+        if (!routeControl) {
+          routeControl = L.Routing.control({
+            waypoints: [origin, destination],
+            routeWhileDragging: false,
+            createMarker: () => null,
+            show: false,
+            addWaypoints: false,
+            lineOptions: {
+              styles: [{ color: 'red', opacity: 0.8, weight: 4 }]
+            }
+          }).addTo(map);
+        } else {
+          routeControl.setWaypoints([origin, destination]);
+        }
+      } catch (err) {
+        console.error("❌ Could not fetch customer location:", err);
       }
     }
   </script>
 </body>
 </html>
+
