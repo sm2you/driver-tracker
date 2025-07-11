@@ -2,18 +2,12 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>📍 Live Location Tracker with Directions</title>
+  <title>📡 Live Location Tracker with Route</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <!-- Leaflet CSS -->
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-  />
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.css"
-  />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.css" />
 
   <style>
     body {
@@ -22,7 +16,6 @@
       padding: 40px;
       background: #f0f4f8;
     }
-
     button {
       padding: 15px 30px;
       font-size: 18px;
@@ -32,17 +25,14 @@
       border-radius: 8px;
       cursor: pointer;
     }
-
     button:hover {
       background: #0056b3;
     }
-
     #status {
       margin-top: 20px;
       font-size: 16px;
       color: #333;
     }
-
     #map {
       height: 400px;
       width: 100%;
@@ -53,11 +43,10 @@
     }
   </style>
 </head>
-
 <body>
-  <h2>📍 Live Location + Route Tracking</h2>
-  <p>Click to start real-time location tracking and directions to a destination.</p>
-  <button onclick="startTracking()">Start Tracking</button>
+  <h2>📍 Real-Time Location + Route Tracking</h2>
+  <p>Click to start or stop live tracking. Watch your dot move and route update!</p>
+  <button onclick="toggleTracking()">Start Tracking</button>
   <div id="status"></div>
   <div id="map"></div>
 
@@ -66,23 +55,32 @@
   <script src="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.min.js"></script>
 
   <script>
-    let map, marker, routeControl;
+    let map, marker, routeControl, watchId = null;
+    let tracking = false;
     const destLat = 43.8500;
-    const destLon = -79.6200; // 📍 Destination — you can change this
+    const destLon = -79.6200; // 🔴 Change this if you want a different destination
 
-    function startTracking() {
+    function toggleTracking() {
       if (!navigator.geolocation) {
         updateStatus("❌ Geolocation not supported.");
         return;
       }
 
-      updateStatus("📡 Starting live location tracking...");
-
-      navigator.geolocation.watchPosition(success, error, {
-        enableHighAccuracy: true,
-        maximumAge: 0,
-        timeout: 5000
-      });
+      if (tracking) {
+        navigator.geolocation.clearWatch(watchId);
+        tracking = false;
+        updateStatus("⛔ Tracking stopped.");
+        document.querySelector("button").textContent = "Start Tracking";
+      } else {
+        watchId = navigator.geolocation.watchPosition(success, error, {
+          enableHighAccuracy: true,
+          maximumAge: 0,
+          timeout: 5000
+        });
+        tracking = true;
+        updateStatus("📡 Tracking started...");
+        document.querySelector("button").textContent = "Stop Tracking";
+      }
     }
 
     function success(position) {
@@ -103,11 +101,11 @@
     }
 
     function error() {
-      updateStatus("❌ Unable to access your location.");
+      updateStatus("❌ Unable to access location.");
     }
 
-    function updateStatus(msg) {
-      document.getElementById("status").textContent = msg;
+    function updateStatus(message) {
+      document.getElementById("status").textContent = message;
     }
 
     function updateMap(lat, lon) {
@@ -117,7 +115,14 @@
           attribution: '&copy; OpenStreetMap contributors'
         }).addTo(map);
 
-        marker = L.marker([lat, lon]).addTo(map).bindPopup("You are here 📍").openPopup();
+        marker = L.circleMarker([lat, lon], {
+          radius: 10,
+          fillColor: "#007bff",
+          color: "#fff",
+          weight: 2,
+          opacity: 1,
+          fillOpacity: 0.8
+        }).addTo(map);
       } else {
         marker.setLatLng([lat, lon]);
         map.panTo([lat, lon]);
@@ -125,21 +130,21 @@
     }
 
     function updateRoute(lat, lon) {
+      const origin = L.latLng(lat, lon);
+      const destination = L.latLng(destLat, destLon);
+
       if (routeControl) {
-        routeControl.setWaypoints([
-          L.latLng(lat, lon),
-          L.latLng(destLat, destLon)
-        ]);
+        routeControl.setWaypoints([origin, destination]);
       } else {
         routeControl = L.Routing.control({
-          waypoints: [
-            L.latLng(lat, lon),
-            L.latLng(destLat, destLon)
-          ],
+          waypoints: [origin, destination],
           routeWhileDragging: false,
           show: false,
           addWaypoints: false,
-          createMarker: () => null
+          createMarker: () => null,
+          lineOptions: {
+            styles: [{ color: 'red', opacity: 0.7, weight: 4 }]
+          }
         }).addTo(map);
       }
     }
