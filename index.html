@@ -2,18 +2,12 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>📡 Tracker with Arrow Direction</title>
+  <title>📡 Live Tracker with Arrow + Route</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.css" />
   <style>
-    body {
-      font-family: sans-serif;
-      text-align: center;
-      padding: 40px;
-      background: #f9f9f9;
-    }
+    body { font-family: sans-serif; text-align: center; padding: 40px; background: #f0f4f8; }
     button {
       padding: 12px 28px;
       font-size: 16px;
@@ -23,37 +17,32 @@
       border: none;
       cursor: pointer;
     }
-    button:hover {
-      background: #0056b3;
-    }
+    button:hover { background: #0056b3; }
     #map {
       height: 400px;
       width: 100%;
       max-width: 600px;
       margin: 30px auto;
       border-radius: 10px;
-      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      box-shadow: 0 0 8px rgba(0,0,0,0.1);
     }
-    #status {
-      margin-top: 20px;
-      font-size: 16px;
-      color: #333;
-    }
+    #status { margin-top: 20px; font-size: 16px; color: #333; }
   </style>
 </head>
 <body>
-  <h2>📍 Tracker with Live Arrow Direction</h2>
+  <h2>📍 MVP Live Tracker + Direction</h2>
   <button onclick="toggleTracking()">Start Tracking</button>
-  <div id="status">Waiting...</div>
+  <div id="status">Waiting for location...</div>
   <div id="map"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.min.js"></script>
+
   <script>
     let map, arrowMarker, routeControl, watchId = null;
     let tracking = false;
-    let lastRouteTime = 0;
     let prevLat = null, prevLon = null;
+    let lastRouteTime = 0;
 
     const destLat = 43.8500;
     const destLon = -79.6200;
@@ -82,21 +71,17 @@
       }
     }
 
-    function success(position) {
-      const lat = position.coords.latitude;
-      const lon = position.coords.longitude;
-
+    function success(pos) {
+      const lat = pos.coords.latitude;
+      const lon = pos.coords.longitude;
       updateStatus(`📍 You: ${lat.toFixed(5)}, ${lon.toFixed(5)}`);
+
       updateMap(lat, lon);
       updateRoute(lat, lon);
     }
 
     function error() {
-      updateStatus("❌ Unable to access location.");
-    }
-
-    function updateStatus(msg) {
-      document.getElementById("status").textContent = msg;
+      updateStatus("❌ Could not fetch location.");
     }
 
     function updateMap(lat, lon) {
@@ -108,18 +93,18 @@
 
         const icon = L.divIcon({
           className: "arrow-icon",
-          html: "🡺", // arrow emoji or SVG
+          html: "🡺",
           iconSize: [30, 30],
           iconAnchor: [15, 15]
         });
 
-        arrowMarker = L.marker([lat, lon], { icon, rotationAngle: 0 }).addTo(map);
+        arrowMarker = L.marker([lat, lon], { icon }).addTo(map);
       } else {
         arrowMarker.setLatLng([lat, lon]);
         map.panTo([lat, lon]);
 
-        // 🔄 Rotate the arrow based on movement direction
-        if (prevLat && prevLon && (lat !== prevLat || lon !== prevLon)) {
+        // 🔄 Rotate arrow to match heading
+        if (prevLat && prevLon) {
           const angle = getBearing(prevLat, prevLon, lat, lon);
           arrowMarker._icon.style.transform = `rotate(${angle}deg)`;
         }
@@ -131,9 +116,6 @@
 
     function updateRoute(lat, lon) {
       const now = Date.now();
-      if (now - lastRouteTime < 10000) return;
-      lastRouteTime = now;
-
       const origin = L.latLng(lat, lon);
       const destination = L.latLng(destLat, destLon);
 
@@ -145,28 +127,29 @@
           addWaypoints: false,
           createMarker: () => null,
           lineOptions: {
-            styles: [{ color: 'red', opacity: 0.8, weight: 4 }]
+            styles: [{ color: 'red', opacity: 0.85, weight: 5 }]
           }
         }).addTo(map);
-      } else {
+      } else if (now - lastRouteTime > 10000) {
         routeControl.setWaypoints([origin, destination]);
+        lastRouteTime = now;
       }
     }
 
-    // 🧭 Calculate bearing between two points
     function getBearing(lat1, lon1, lat2, lon2) {
       const φ1 = lat1 * Math.PI / 180;
       const φ2 = lat2 * Math.PI / 180;
       const λ1 = lon1 * Math.PI / 180;
       const λ2 = lon2 * Math.PI / 180;
       const y = Math.sin(λ2 - λ1) * Math.cos(φ2);
-      const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(λ2 - λ1);
-      let θ = Math.atan2(y, x) * 180 / Math.PI;
-      return (θ + 360) % 360; // Normalize 0–360
+      const x = Math.cos(φ1) * Math.sin(φ2) -
+                Math.sin(φ1) * Math.cos(φ2) * Math.cos(λ2 - λ1);
+      return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
     }
   </script>
 </body>
 </html>
+
 
 
 
